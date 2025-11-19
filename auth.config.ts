@@ -1,6 +1,6 @@
 import type { NextAuthConfig } from "next-auth";
 import Credentials from "next-auth/providers/credentials";
-import { findUserByEmail, verifyPassword } from "@/lib/users";
+import { verifyPassword } from "@/lib/services/user-service";
 
 export const authConfig: NextAuthConfig = {
   session: {
@@ -24,22 +24,18 @@ export const authConfig: NextAuthConfig = {
           throw new Error("Missing email or password");
         }
 
-        const user = findUserByEmail(email);
+        const user = await verifyPassword(email, password);
         if (!user) {
-          throw new Error("No user found with that email");
-        }
-
-        const valid = await verifyPassword(user, password);
-        if (!valid) {
-          throw new Error("Invalid password");
+          throw new Error("Invalid credentials");
         }
 
         return {
-          id: user.id,
+          id: user._id.toString(),
           name: user.name,
           email: user.email,
           role: user.role,
           xp: user.xp,
+          badges: user.badges,
         };
       },
     }),
@@ -47,15 +43,19 @@ export const authConfig: NextAuthConfig = {
   callbacks: {
     async jwt({ token, user }) {
       if (user) {
+        token.sub = user.id as string;
         token.role = user.role;
         token.xp = user.xp;
+        token.badges = user.badges;
       }
       return token;
     },
     async session({ session, token }) {
       if (session.user) {
+        session.user.id = token.sub as string;
         session.user.role = token.role as string;
         session.user.xp = token.xp as number;
+        session.user.badges = token.badges as string[];
       }
       return session;
     },

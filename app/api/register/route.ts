@@ -1,5 +1,5 @@
 import { NextResponse } from "next/server";
-import { registerUser } from "@/lib/users";
+import { createUser } from "@/lib/services/user-service";
 import { Role } from "@/types/roles";
 
 export async function POST(request: Request) {
@@ -31,8 +31,19 @@ export async function POST(request: Request) {
   }
 
   try {
-    const user = await registerUser({ name, email, password, role });
-    return NextResponse.json({ user }, { status: 201 });
+    const user = await createUser({ name, email, password, role });
+    return NextResponse.json(
+      {
+        user: {
+          id: user._id,
+          name: user.name,
+          email: user.email,
+          role: user.role,
+          xp: user.xp,
+        },
+      },
+      { status: 201 }
+    );
   } catch (error) {
     return NextResponse.json(
       {

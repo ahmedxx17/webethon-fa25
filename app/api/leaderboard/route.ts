@@ -1,8 +1,8 @@
 import { NextResponse } from "next/server";
-import { getLeaderboard } from "@/lib/users";
+import { getLeaderboard } from "@/lib/services/user-service";
 
 export async function GET() {
-  const leaderboard = getLeaderboard();
+  const leaderboard = await getLeaderboard();
   return NextResponse.json({ leaderboard });
 }
 
