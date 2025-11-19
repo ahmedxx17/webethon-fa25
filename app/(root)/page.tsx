@@ -1,5 +1,6 @@
 "use client";
 
+import Link from "next/link";
 import { FormEvent, useEffect, useState } from "react";
 import { signIn, signOut, useSession } from "next-auth/react";
 import type { Role } from "@/types/roles";
@@ -150,6 +151,15 @@ export default function Home() {
             ))}
             {leaderboard.length === 0 && <li>No adventurers tracked yet.</li>}
           </ul>
+        </div>
+
+        <div className="link-row">
+          <Link className="primary link-button" href="/projects">
+            View Project Deck
+          </Link>
+          <Link className="ghost link-button" href="/kanban">
+            Open Kanban Board
+          </Link>
         </div>
       </section>
 
