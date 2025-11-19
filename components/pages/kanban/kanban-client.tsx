@@ -1,6 +1,6 @@
 "use client";
 
-import { useMemo, useState } from "react";
+import { useEffect, useMemo, useState } from "react";
 import type { Role } from "@/types/roles";
 
 type Stage = "To-Do" | "In-Progress" | "Review" | "Done";
@@ -12,8 +12,9 @@ type TaskResponse = {
   status: Stage;
   xp: number;
   badges: string[];
-  assignee: { name: string; email: string; role: string };
+  assignee?: { name: string; email: string; role: string };
   project: { _id: string; title: string };
+  submittedBy?: { name: string };
 };
 
 type SlimProject = {
@@ -44,15 +45,32 @@ const initialTaskForm = {
   badges: "",
 };
 
+type Developer = {
+  name: string;
+  email: string;
+};
+
+type PendingTask = {
+  _id: string;
+  title: string;
+  description: string;
+  project?: { title: string };
+  submittedBy?: { name: string };
+};
+
 type Props = {
   initialTasks: TaskResponse[];
   initialProjects: SlimProject[];
+  developers: Developer[];
+  initialPending: PendingTask[];
   sessionUser: SessionUser | null;
 };
 
 export default function KanbanClient({
   initialTasks,
   initialProjects,
+  developers,
+  initialPending,
   sessionUser,
 }: Props) {
   const [tasks, setTasks] = useState<TaskResponse[]>(initialTasks);
@@ -66,8 +84,13 @@ export default function KanbanClient({
     null
   );
   const [loading, setLoading] = useState(false);
+  const [pendingTasks, setPendingTasks] = useState<PendingTask[]>(initialPending);
+  const [pendingAssignments, setPendingAssignments] = useState<Record<string, string>>({});
 
-  const canCreateTask = sessionUser?.role === "Guild Master";
+  const isGuildMaster = sessionUser?.role === "Guild Master";
+  const canCreateTask = isGuildMaster;
+  const canProgressTask = isGuildMaster || sessionUser?.role === "Adventurer";
+  const canAssign = isGuildMaster;
   const isDeveloper = sessionUser?.role === "Adventurer";
 
   const visibleTasks = useMemo(() => {
@@ -104,7 +127,27 @@ export default function KanbanClient({
         projectId: prev.projectId || slimProjects[0]._id,
       }));
     }
+    if (isGuildMaster) {
+      await refreshPending();
+    }
   };
+
+  const refreshPending = async () => {
+    if (!isGuildMaster) return;
+    const response = await fetch("/api/tasks/pending");
+    if (response.ok) {
+      const payload = await response.json();
+      setPendingTasks(payload.tasks || []);
+    }
+  };
+
+  useEffect(() => {
+    setTaskForm((prev) => ({
+      ...prev,
+      assigneeEmail: prev.assigneeEmail || developers[0]?.email || "",
+    }));
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [developers.length]);
 
   const handleTaskSubmit = async (event: React.FormEvent<HTMLFormElement>) => {
     event.preventDefault();
@@ -151,6 +194,28 @@ export default function KanbanClient({
     }
   };
 
+  const handleApprove = async (taskId: string) => {
+    const assigneeEmail = pendingAssignments[taskId];
+    if (!assigneeEmail) {
+      setFeedback({ text: "Select an adventurer before approving", variant: "error" });
+      return;
+    }
+
+    const response = await fetch(`/api/tasks/${taskId}/approve`, {
+      method: "PATCH",
+      headers: { "Content-Type": "application/json" },
+      body: JSON.stringify({ assigneeEmail }),
+    });
+    const payload = await response.json();
+    if (!response.ok) {
+      setFeedback({ text: payload.message || "Unable to approve quest", variant: "error" });
+      return;
+    }
+    setFeedback({ text: "Quest approved and added to the board!", variant: "success" });
+    setPendingAssignments((prev) => ({ ...prev, [taskId]: "" }));
+    await Promise.all([refreshPending(), refreshBoard()]);
+  };
+
   return (
     <main className="page-shell">
       <section className="hero slim">
@@ -176,6 +241,50 @@ export default function KanbanClient({
       </section>
 
       {feedback && <p className={`message ${feedback.variant}`}>{feedback.text}</p>}
+
+      {isGuildMaster && (
+        <section className="form-card">
+          <h2>Awaiting approval</h2>
+          {pendingTasks.length === 0 ? (
+            <p>No quests waiting in the queue.</p>
+          ) : (
+            <ul className="submitted-list">
+              {pendingTasks.map((task) => (
+                <li key={task._id}>
+                  <strong>{task.title}</strong> · {task.project?.title ?? "Unknown"} <br />
+                  <small>Requested by {task.submittedBy?.name ?? "Quest Giver"}</small>
+                  <div className="field" style={{ marginTop: "0.5rem" }}>
+                    <span>Assign adventurer</span>
+                    <select
+                      value={pendingAssignments[task._id] ?? ""}
+                      onChange={(event) =>
+                        setPendingAssignments((prev) => ({
+                          ...prev,
+                          [task._id]: event.target.value,
+                        }))
+                      }
+                    >
+                      <option value="">Select teammate</option>
+                      {developers.map((developer) => (
+                        <option key={developer.email} value={developer.email}>
+                          {developer.name}
+                        </option>
+                      ))}
+                    </select>
+                  </div>
+                  <button
+                    className="primary"
+                    style={{ marginTop: "0.75rem" }}
+                    onClick={() => handleApprove(task._id)}
+                  >
+                    Approve & Assign
+                  </button>
+                </li>
+              ))}
+            </ul>
+          )}
+        </section>
+      )}
 
       {canCreateTask && (
         <section className="form-card">
@@ -225,18 +334,27 @@ export default function KanbanClient({
               />
             </label>
 
-            <label className="field">
-              <span>Assignee email</span>
-              <input
-                type="email"
-                value={taskForm.assigneeEmail}
-                onChange={(event) =>
-                  setTaskForm((prev) => ({ ...prev, assigneeEmail: event.target.value }))
-                }
-                required
-                placeholder="dev@devquest.io"
-              />
-            </label>
+            {canAssign && (
+              <label className="field">
+                <span>Assignee</span>
+                <select
+                  value={taskForm.assigneeEmail}
+                  onChange={(event) =>
+                    setTaskForm((prev) => ({ ...prev, assigneeEmail: event.target.value }))
+                  }
+                  required
+                >
+                  <option value="" disabled>
+                    Select adventurer
+                  </option>
+                  {developers.map((developer) => (
+                    <option key={developer.email} value={developer.email}>
+                      {developer.name}
+                    </option>
+                  ))}
+                </select>
+              </label>
+            )}
 
             <label className="field">
               <span>XP Reward</span>
@@ -280,14 +398,54 @@ export default function KanbanClient({
                 <div key={task._id} className="task-card">
                   <p className="eyebrow">{task.project?.title}</p>
                   <h3>{task.title}</h3>
-                  <p className="assignee">{task.assignee?.name}</p>
+                  <p className="assignee">{task.assignee?.name ?? "Unassigned"}</p>
                   <p className="xp-callout">{task.xp} XP</p>
                   <ul className="badge-row">
                     {task.badges.map((badge) => (
                       <li key={badge}>{badge}</li>
                     ))}
                   </ul>
-                  {(isDeveloper || canCreateTask) && (
+                  {canAssign && !task.assignee && (
+                    <label className="field">
+                      <span>Assign adventurer</span>
+                      <select
+                        defaultValue=""
+                        onChange={async (event) => {
+                          const email = event.target.value;
+                          if (!email) return;
+                          setFeedback(null);
+                          const response = await fetch(`/api/tasks/${task._id}/assign`, {
+                            method: "PATCH",
+                            headers: { "Content-Type": "application/json" },
+                            body: JSON.stringify({ assigneeEmail: email }),
+                          });
+                          const payload = await response.json();
+                          if (!response.ok) {
+                            setFeedback({
+                              text: payload.message || "Unable to assign adventurer",
+                              variant: "error",
+                            });
+                            event.target.value = "";
+                            return;
+                          }
+                          await refreshBoard();
+                          setFeedback({
+                            text: `${payload.task.assignee.name} is now on this quest`,
+                            variant: "success",
+                          });
+                          event.target.value = "";
+                        }}
+                      >
+                        <option value="">Select teammate</option>
+                        {developers.map((developer) => (
+                          <option key={developer.email} value={developer.email}>
+                            {developer.name}
+                          </option>
+                        ))}
+                      </select>
+                    </label>
+                  )}
+                  {canProgressTask && task.assignee && (
                     <label className="field">
                       <span>Update stage</span>
                       <select

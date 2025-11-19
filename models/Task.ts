@@ -11,7 +11,9 @@ const TaskSchema = new Schema(
     },
     xp: { type: Number, default: 50 },
     badges: { type: [String], default: [] },
-    assignee: { type: Schema.Types.ObjectId, ref: "User", required: true },
+    assignee: { type: Schema.Types.ObjectId, ref: "User" },
+    submittedBy: { type: Schema.Types.ObjectId, ref: "User", required: true },
+    approved: { type: Boolean, default: false },
     project: { type: Schema.Types.ObjectId, ref: "Project", required: true },
   },
   { timestamps: true }

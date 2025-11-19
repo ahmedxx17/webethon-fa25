@@ -1,6 +1,6 @@
 "use client";
 
-import { useMemo, useState } from "react";
+import { useEffect, useMemo, useState } from "react";
 import type { Role } from "@/types/roles";
 
 type ProjectStatus = "Ideation" | "Active Sprint" | "Review" | "Launched";
@@ -39,6 +39,12 @@ type FormState = {
   description: string;
 };
 
+type TaskDraft = {
+  projectId: string;
+  title: string;
+  description: string;
+};
+
 type Props = {
   initialProjects: ProjectResponse[];
   sessionUser: SessionUser | null;
@@ -52,6 +58,22 @@ export default function ProjectsClient({ initialProjects, sessionUser }: Props) 
     null
   );
   const [form, setForm] = useState<FormState>({ title: "", description: "" });
+  const [taskForm, setTaskForm] = useState<TaskDraft>({
+    projectId: initialProjects[0]?._id ?? "",
+    title: "",
+    description: "",
+  });
+  const [submittedTasks, setSubmittedTasks] = useState<
+    Array<{
+      _id: string;
+      title: string;
+      approved: boolean;
+      status: string;
+      project?: { title: string };
+      assignee?: { name: string };
+    }>
+  >([]);
+  const [taskFeedback, setTaskFeedback] = useState<string | null>(null);
 
   const canCreate = sessionUser?.role === "Quest Giver";
   const canAccept = sessionUser?.role === "Guild Master";
@@ -65,7 +87,24 @@ export default function ProjectsClient({ initialProjects, sessionUser }: Props) 
     const response = await fetch("/api/projects");
     const payload = await response.json();
     setProjects(payload.projects || []);
+    if (!taskForm.projectId && payload.projects?.length) {
+      setTaskForm((prev) => ({ ...prev, projectId: payload.projects[0]._id }));
+    }
   };
+
+  const refreshSubmittedTasks = async () => {
+    if (!canCreate) return;
+    const response = await fetch("/api/tasks/submitted");
+    if (response.ok) {
+      const payload = await response.json();
+      setSubmittedTasks(payload.tasks || []);
+    }
+  };
+
+  useEffect(() => {
+    refreshSubmittedTasks();
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [canCreate]);
 
   const handleCreateProject = async (event: React.FormEvent<HTMLFormElement>) => {
     event.preventDefault();
@@ -86,6 +125,24 @@ export default function ProjectsClient({ initialProjects, sessionUser }: Props) 
     await refreshProjects();
     setFeedback({ text: "Quest published!", variant: "success" });
     setLoading(false);
+  };
+
+  const handleSubmitTask = async (event: React.FormEvent<HTMLFormElement>) => {
+    event.preventDefault();
+    setTaskFeedback(null);
+    const response = await fetch("/api/tasks", {
+      method: "POST",
+      headers: { "Content-Type": "application/json" },
+      body: JSON.stringify(taskForm),
+    });
+    const payload = await response.json();
+    if (!response.ok) {
+      setTaskFeedback(payload.message || "Unable to submit quest card");
+      return;
+    }
+    setTaskFeedback(payload.message);
+    setTaskForm((prev) => ({ ...prev, title: "", description: "" }));
+    await refreshSubmittedTasks();
   };
 
   const handleAccept = async (projectId: string) => {
@@ -172,6 +229,78 @@ export default function ProjectsClient({ initialProjects, sessionUser }: Props) 
               {loading ? "Publishing..." : "Publish Quest"}
             </button>
           </form>
+        </section>
+      )}
+
+      {canCreate && (
+        <section className="form-card">
+          <h2>Submit a task for guild review</h2>
+          <form className="auth-form" onSubmit={handleSubmitTask}>
+            <label className="field">
+              <span>Project</span>
+              <select
+                value={taskForm.projectId}
+                onChange={(event) =>
+                  setTaskForm((prev) => ({ ...prev, projectId: event.target.value }))
+                }
+                required
+              >
+                <option value="" disabled>
+                  Select a project
+                </option>
+                {projects.map((project) => (
+                  <option key={project._id} value={project._id}>
+                    {project.title}
+                  </option>
+                ))}
+              </select>
+            </label>
+            <label className="field">
+              <span>Task title</span>
+              <input
+                value={taskForm.title}
+                onChange={(event) =>
+                  setTaskForm((prev) => ({ ...prev, title: event.target.value }))
+                }
+                required
+                placeholder="e.g. Summon AI quest ideas"
+              />
+            </label>
+            <label className="field">
+              <span>Details</span>
+              <input
+                value={taskForm.description}
+                onChange={(event) =>
+                  setTaskForm((prev) => ({ ...prev, description: event.target.value }))
+                }
+                required
+                placeholder="Describe the goal for the guild"
+              />
+            </label>
+            {taskFeedback && <p className="message success">{taskFeedback}</p>}
+            <button className="primary" type="submit">
+              Submit Task
+            </button>
+          </form>
+
+          {submittedTasks.length > 0 && (
+            <div className="submitted-list">
+              <p className="eyebrow">Submitted Quests</p>
+              <ul>
+                {submittedTasks.map((task) => (
+                  <li key={task._id}>
+                    <div>
+                      <strong>{task.title}</strong> · {task.project?.title ?? "Unknown project"}
+                    </div>
+                    <div>
+                      Status: {task.approved ? task.status : "Awaiting guild master"}
+                      {task.assignee && ` · Assigned to ${task.assignee.name}`}
+                    </div>
+                  </li>
+                ))}
+              </ul>
+            </div>
+          )}
         </section>
       )}
 
