@@ -1,15 +1,12 @@
-import { NextResponse } from "next/server";
+import { NextResponse, NextRequest } from "next/server";
 import { auth } from "@/auth";
 import { updateTaskStatus } from "@/lib/services/task-service";
 
-type Params = {
-  params: { id: string };
-};
-
 const allowedStatuses = ["To-Do", "In-Progress", "Review", "Done"];
 
-export async function PATCH(request: Request, { params }: Params) {
-  const session = await auth();
+export async function PATCH(request: NextRequest, { params }: { params: Promise<{ id: string }> }) {
+  const { id } = await params;
+  const session = await auth() as any;
   if (!session?.user) {
     return NextResponse.json({ message: "Unauthorized" }, { status: 401 });
   }
@@ -22,7 +19,7 @@ export async function PATCH(request: Request, { params }: Params) {
   }
 
   try {
-    const task = await updateTaskStatus({ taskId: params.id, status });
+    const task = await updateTaskStatus({ taskId: id, status });
     return NextResponse.json({ task });
   } catch (error) {
     return NextResponse.json(

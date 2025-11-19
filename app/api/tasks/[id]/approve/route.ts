@@ -1,13 +1,10 @@
-import { NextResponse } from "next/server";
+import { NextResponse, NextRequest } from "next/server";
 import { auth } from "@/auth";
 import { approveTask } from "@/lib/services/task-service";
 
-type Params = {
-  params: { id: string };
-};
-
-export async function PATCH(request: Request, { params }: Params) {
-  const session = await auth();
+export async function PATCH(request: NextRequest, { params }: { params: Promise<{ id: string }> }) {
+  const { id } = await params;
+  const session = await auth() as any;
   if (!session?.user || session.user.role !== "Guild Master") {
     return NextResponse.json({ message: "Only Guild Masters can approve quests" }, { status: 403 });
   }
@@ -17,7 +14,7 @@ export async function PATCH(request: Request, { params }: Params) {
 
   try {
     const task = await approveTask({
-      taskId: params.id,
+      taskId: id,
       managerId: session.user.id!,
       assigneeEmail,
     });

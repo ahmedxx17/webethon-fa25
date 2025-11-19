@@ -1,13 +1,10 @@
-import { NextResponse } from "next/server";
+import { NextResponse, NextRequest } from "next/server";
 import { auth } from "@/auth";
 import { acceptProject } from "@/lib/services/project-service";
 
-type Params = {
-  params: { id: string };
-};
-
-export async function PATCH(request: Request, { params }: Params) {
-  const session = await auth();
+export async function PATCH(request: NextRequest, { params }: { params: Promise<{ id: string }> }) {
+  const { id } = await params;
+  const session = await auth() as any;
   if (!session?.user) {
     return NextResponse.json({ message: "Unauthorized" }, { status: 401 });
   }
@@ -25,7 +22,7 @@ export async function PATCH(request: Request, { params }: Params) {
 
     try {
       const project = await acceptProject({
-        projectId: params.id,
+        projectId: id,
         managerId: session.user.id!,
       });
 

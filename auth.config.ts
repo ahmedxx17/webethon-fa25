@@ -1,10 +1,9 @@
-import type { NextAuthConfig } from "next-auth";
 import Credentials from "next-auth/providers/credentials";
 import { verifyPassword } from "@/lib/services/user-service";
 
-export const authConfig: NextAuthConfig = {
+export const authConfig = {
   session: {
-    strategy: "jwt",
+    strategy: "jwt" as const,
   },
   pages: {
     signIn: "/",
@@ -41,7 +40,7 @@ export const authConfig: NextAuthConfig = {
     }),
   ],
   callbacks: {
-    async jwt({ token, user }) {
+    async jwt({ token, user }: any) {
       if (user) {
         token.sub = user.id as string;
         token.role = user.role;
@@ -50,7 +49,7 @@ export const authConfig: NextAuthConfig = {
       }
       return token;
     },
-    async session({ session, token }) {
+    async session({ session, token }: any) {
       if (session.user) {
         session.user.id = token.sub as string;
         session.user.role = token.role as string;

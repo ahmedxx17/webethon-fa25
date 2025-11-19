@@ -4,7 +4,7 @@ import ProjectsClient from "@/components/pages/projects/projects-client";
 import { redirect } from "next/navigation";
 
 export default async function ProjectsPage() {
-  const session = await auth();
+  const session = await auth() as any;
   if (!session?.user) {
     redirect("/?login=required");
   }

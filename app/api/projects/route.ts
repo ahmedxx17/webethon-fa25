@@ -11,7 +11,7 @@ export async function GET() {
 }
 
 export async function POST(request: Request) {
-  const session = await auth();
+  const session = await auth() as any;
   if (!session?.user || session.user.role !== "Quest Giver") {
     return NextResponse.json({ message: "Only clients can create quests" }, { status: 403 });
   }

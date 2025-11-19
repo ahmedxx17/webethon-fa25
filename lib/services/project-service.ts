@@ -2,6 +2,39 @@ import { initDatabase } from "@/lib/mongodb";
 import Project from "@/models/Project";
 import Task from "@/models/Task";
 
+// Helper function to serialize MongoDB documents
+function serializeDoc(doc: any): any {
+  if (!doc) return null;
+  if (Array.isArray(doc)) return doc.map(serializeDoc);
+  if (typeof doc !== "object" || doc instanceof Date) return doc;
+
+  const serialized: any = {};
+  for (const [key, value] of Object.entries(doc)) {
+    if (value === null || value === undefined) {
+      serialized[key] = value;
+    } else if (value instanceof Date) {
+      serialized[key] = value.toISOString();
+    } else if (typeof value === "object") {
+      if ((value as any)?._id) {
+        // It's a populated reference, serialize it
+        serialized[key] = { ...value, _id: (value as any)._id.toString() };
+      } else if (Array.isArray(value)) {
+        serialized[key] = value.map((v) =>
+          (v as any)?._id ? { ...v, _id: (v as any)._id.toString() } : v
+        );
+      } else {
+        // Recursively serialize nested objects
+        serialized[key] = serializeDoc(value);
+      }
+    } else {
+      serialized[key] = value;
+    }
+  }
+  // Ensure _id is converted to string
+  if ((doc as any)._id) serialized._id = (doc as any)._id.toString();
+  return serialized;
+}
+
 export async function fetchProjects() {
   await initDatabase();
 
@@ -56,8 +89,11 @@ export async function fetchProjects() {
     };
     const progress =
       metrics.total === 0 ? 0 : Math.round((metrics.done / metrics.total) * 100);
+    
+    // Convert to plain object and serialize all fields
+    const plainProject = JSON.parse(JSON.stringify(project));
     return {
-      ...project,
+      ...plainProject,
       metrics,
       progress,
     };
@@ -66,10 +102,11 @@ export async function fetchProjects() {
 
 export async function fetchProjectSummaries() {
   await initDatabase();
-  return Project.find()
+  const projects = await Project.find()
     .select("title status")
     .sort({ title: 1 })
     .lean();
+  return projects.map(project => JSON.parse(JSON.stringify(project)));
 }
 
 export async function createProject({
@@ -87,7 +124,7 @@ export async function createProject({
     description,
     client: clientId,
   });
-  return project;
+  return JSON.parse(JSON.stringify(project));
 }
 
 export async function acceptProject({
@@ -98,7 +135,7 @@ export async function acceptProject({
   managerId: string;
 }) {
   await initDatabase();
-  return Project.findByIdAndUpdate(
+  const project = await Project.findByIdAndUpdate(
     projectId,
     {
       manager: managerId,
@@ -108,5 +145,7 @@ export async function acceptProject({
   )
     .populate("client", "name role email")
     .populate("manager", "name role email");
+  
+  return project ? JSON.parse(JSON.stringify(project)) : null;
 }
 

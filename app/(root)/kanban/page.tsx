@@ -6,7 +6,7 @@ import KanbanClient from "@/components/pages/kanban/kanban-client";
 import { redirect } from "next/navigation";
 
 export default async function KanbanBoardPage() {
-  const session = await auth();
+  const session = await auth() as any;
   if (!session?.user) {
     redirect("/?login=required");
   }

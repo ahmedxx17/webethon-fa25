@@ -4,6 +4,39 @@ import Project from "@/models/Project";
 import User from "@/models/User";
 import { awardXpToUser } from "./user-service";
 
+// Helper function to serialize MongoDB documents
+function serializeDoc(doc: any): any {
+  if (!doc) return null;
+  if (Array.isArray(doc)) return doc.map(serializeDoc);
+  if (typeof doc !== "object" || doc instanceof Date) return doc;
+
+  const serialized: any = {};
+  for (const [key, value] of Object.entries(doc)) {
+    if (value === null || value === undefined) {
+      serialized[key] = value;
+    } else if (value instanceof Date) {
+      serialized[key] = value.toISOString();
+    } else if (typeof value === "object") {
+      if ((value as any)?._id) {
+        // It's a populated reference, serialize it
+        serialized[key] = { ...value, _id: (value as any)._id.toString() };
+      } else if (Array.isArray(value)) {
+        serialized[key] = value.map((v) =>
+          (v as any)?._id ? { ...v, _id: (v as any)._id.toString() } : v
+        );
+      } else {
+        // Recursively serialize nested objects
+        serialized[key] = serializeDoc(value);
+      }
+    } else {
+      serialized[key] = value;
+    }
+  }
+  // Ensure _id is converted to string
+  if ((doc as any)._id) serialized._id = (doc as any)._id.toString();
+  return serialized;
+}
+
 export async function fetchTasks(projectId?: string) {
   await initDatabase();
   const filter: Record<string, unknown> = { approved: true };
@@ -15,16 +48,18 @@ export async function fetchTasks(projectId?: string) {
     .populate("assignee", "name email role xp badges")
     .populate("project", "title status")
     .populate("submittedBy", "name role email");
-  return query.sort({ createdAt: -1 }).lean();
+  const tasks = await query.sort({ createdAt: -1 }).lean();
+  return tasks.map(task => JSON.parse(JSON.stringify(task)));
 }
 
 export async function fetchPendingTasks() {
   await initDatabase();
-  return Task.find({ approved: false })
+  const tasks = await Task.find({ approved: false })
     .populate("submittedBy", "name email role")
     .populate("project", "title status")
     .sort({ createdAt: 1 })
     .lean();
+  return tasks.map(task => JSON.parse(JSON.stringify(task)));
 }
 
 export async function createTask({
@@ -75,11 +110,12 @@ export async function createTask({
 
 export async function fetchSubmittedTasks(userId: string) {
   await initDatabase();
-  return Task.find({ submittedBy: userId })
+  const tasks = await Task.find({ submittedBy: userId })
     .populate("project", "title status")
     .populate("assignee", "name email role")
     .sort({ createdAt: -1 })
     .lean();
+  return tasks.map(task => JSON.parse(JSON.stringify(task)));
 }
 
 export async function updateTaskStatus({
@@ -101,10 +137,12 @@ export async function updateTaskStatus({
     await awardXpToUser(task.assignee.toString(), task.xp, task.badges);
   }
 
-  return task
+  const populated = await task
     .populate("assignee", "name email role xp badges")
     .populate("project", "title status")
     .populate("submittedBy", "name role email");
+  
+  return JSON.parse(JSON.stringify(populated));
 }
 
 export async function assignTask({
@@ -123,10 +161,12 @@ export async function assignTask({
   task.assignee = assignee._id;
   await task.save();
 
-  return task
+  const populated = await task
     .populate("assignee", "name email role xp badges")
     .populate("project", "title status")
     .populate("submittedBy", "name role email");
+  
+  return JSON.parse(JSON.stringify(populated));
 }
 
 export async function approveTask({
@@ -153,9 +193,11 @@ export async function approveTask({
 
   await task.save();
 
-  return task
+  const populated = await task
     .populate("assignee", "name email role xp badges")
     .populate("project", "title status")
     .populate("submittedBy", "name role email");
+  
+  return JSON.parse(JSON.stringify(populated));
 }
 
