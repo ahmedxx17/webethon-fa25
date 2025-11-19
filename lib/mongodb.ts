@@ -2,7 +2,7 @@ import mongoose from "mongoose";
 import { seedDatabase } from "./seed";
 
 const MONGODB_URI =
-  process.env.MONGODB_URI || "mongodb://localhost:27017";
+  process.env.MONGODB_URI || "mongodb://localhost:27017/devquest";
 
 if (!MONGODB_URI) {
   throw new Error("MONGODB_URI is not defined");
